@@ -1,0 +1,22 @@
+[package]
+name = "a2fuse"
+version = "0.1.0"
+edition = "2024"
+description = "Read-only ProDOS disk image filesystem for macOS"
+license = "MIT"
+
+[features]
+default = []
+macfuse = ["dep:fuser", "dep:libc"]
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+fuser = { version = "0.17", optional = true, features = ["macfuse-4-compat"] }
+libc = { version = "0.2", optional = true }
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+lto = "thin"
+strip = true
