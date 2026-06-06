@@ -128,8 +128,12 @@ mod tests {
 
         assert_eq!(names, ["Read.Me", "._Read.Me"]);
 
-        let data = table.lookup(ROOT_INODE, "Read.Me").expect("data fork inode");
-        let rsrc = table.lookup(ROOT_INODE, "._Read.Me").expect("resource fork inode");
+        let data = table
+            .lookup(ROOT_INODE, "Read.Me")
+            .expect("data fork inode");
+        let rsrc = table
+            .lookup(ROOT_INODE, "._Read.Me")
+            .expect("resource fork inode");
         assert_eq!(data.fork.as_ref().unwrap().eof, 4);
         assert_eq!(rsrc.fork.as_ref().unwrap().eof, 5);
     }
