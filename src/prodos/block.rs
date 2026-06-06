@@ -36,6 +36,10 @@ impl BlockDevice {
         self.bytes.len() / BLOCK_SIZE
     }
 
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
     pub fn read_block(&self, block: u16) -> Result<&[u8; BLOCK_SIZE]> {
         let start = usize::from(block) * BLOCK_SIZE;
         let end = start + BLOCK_SIZE;

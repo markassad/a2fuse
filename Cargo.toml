@@ -2,7 +2,7 @@
 name = "a2fuse"
 version = "0.1.0"
 edition = "2024"
-description = "Read-only ProDOS disk image filesystem for macOS"
+description = "Mount and maintain Apple II ProDOS disk images"
 license = "MIT"
 
 [features]
