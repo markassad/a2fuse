@@ -1,6 +1,6 @@
 [package]
 name = "a2fuse"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Mount and maintain Apple II ProDOS disk images"
 license = "MIT"
