@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "Mount and maintain Apple II ProDOS disk images"
 license = "MIT"
+repository = "https://github.com/markassad/a2fuse"
 
 [features]
 default = []
