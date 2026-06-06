@@ -90,11 +90,11 @@ impl Filesystem for ReadOnlyFilesystem {
         _lock_owner: Option<LockOwner>,
         reply: ReplyData,
     ) {
-        let Some(entry) = self.inode(ino).and_then(|inode| inode.entry.as_ref()) else {
+        let Some(fork) = self.inode(ino).and_then(|inode| inode.fork.as_ref()) else {
             reply.error(Errno::ENOENT);
             return;
         };
-        match self.volume.read_entry(entry) {
+        match self.volume.read_fork(fork) {
             Ok(data) => {
                 let start = usize::try_from(offset)
                     .unwrap_or(usize::MAX)

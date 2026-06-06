@@ -123,28 +123,44 @@ blocks, ProDOS timestamps, EOF, and auxiliary types.
 
 `view` and `add` are aliases for `cat` and `put`.
 
-## Mount Usage
+## macOS Mount Usage
 
 ```sh
 mkdir -p ~/mnt/apple2
-cargo run --features macfuse -- image.po ~/mnt/apple2
+cargo run --features macfuse -- mount image.po ~/mnt/apple2
 ```
 
-The filesystem remains mounted while `a2fuse` is running. Unmount it from
-another terminal:
+The filesystem remains mounted while `a2fuse` is running. Press `Ctrl-C` to
+unmount cleanly.
+
+## Linux Mount Usage
+
+Install FUSE 3 first, then mount with the same command. The `macfuse` Cargo
+feature name is historical; it enables the Unix FUSE mount backend on Linux too.
 
 ```sh
-diskutil unmount ~/mnt/apple2
+sudo apt install fuse3 pkg-config   # Debian/Ubuntu example
+mkdir -p ~/mnt/apple2
+cargo run --features macfuse -- mount image.po ~/mnt/apple2
 ```
+
+If you need to unmount from another terminal:
+
+```sh
+fusermount3 -u ~/mnt/apple2
+```
+
+If shutdown reports `Resource busy`, close any app or shell using the mount and
+try again.
 
 Available options:
 
 ```sh
 a2fuse mount image.po ~/mnt/apple2
-a2fuse --readonly image.po ~/mnt/apple2
-a2fuse --debug image.po ~/mnt/apple2
-a2fuse --metadata=xattr image.po ~/mnt/apple2
-a2fuse --metadata=filename image.po ~/mnt/apple2
+a2fuse mount --readonly image.po ~/mnt/apple2
+a2fuse mount --debug image.po ~/mnt/apple2
+a2fuse mount --metadata=xattr image.po ~/mnt/apple2
+a2fuse mount --metadata=filename image.po ~/mnt/apple2
 ```
 
 Filename metadata mode produces names such as:

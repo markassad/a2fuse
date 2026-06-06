@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
 
-use a2fuse::prodos::MetadataMode;
+use crate::prodos::MetadataMode;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -18,14 +18,6 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub command: Option<Command>,
-
-    /// ProDOS image to mount, when using the legacy command form.
-    #[arg(value_name = "IMAGE")]
-    pub image: Option<PathBuf>,
-
-    /// Mount point, when using the legacy command form.
-    #[arg(value_name = "MOUNTPOINT", requires = "image")]
-    pub mountpoint: Option<PathBuf>,
 
     /// Explicitly request a read-only mount (mounts are always read-only).
     #[arg(long)]

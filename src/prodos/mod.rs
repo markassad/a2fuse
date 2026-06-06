@@ -8,6 +8,7 @@ pub mod writer;
 
 pub use block::{BLOCK_SIZE, BlockDevice};
 pub use directory::{Directory, DirectoryEntry};
+pub use file::FileFork;
 pub use path::MetadataMode;
 pub use types::{AccessFlags, ProdosTimestamp, StorageType};
 pub use volume::{Node, Volume, VolumeHeader};

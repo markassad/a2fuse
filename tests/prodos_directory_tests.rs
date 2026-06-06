@@ -1,3 +1,4 @@
+use a2fuse::A2FuseError;
 use a2fuse::prodos::directory::{PRODOS_ENTRIES_PER_BLOCK, PRODOS_ENTRY_LENGTH};
 use a2fuse::prodos::file::{data_block_numbers, read_file};
 use a2fuse::prodos::{
@@ -149,6 +150,94 @@ fn opens_volume_directory_and_reads_a_file() {
     assert_eq!(volume.read_entry(&node.entry).unwrap(), b"hello");
 }
 
+#[test]
+fn reads_extended_data_and_resource_forks() {
+    let mut image = vec![0_u8; BLOCK_SIZE * 12];
+    directory_links(&mut image, 2, 0, 0);
+
+    let mut header = [0_u8; PRODOS_ENTRY_LENGTH];
+    header[0] = (StorageType::VolumeHeader as u8) << 4 | 6;
+    header[1..7].copy_from_slice(b"FORKS ");
+    header[0x1e] = 0xe3;
+    header[0x1f] = PRODOS_ENTRY_LENGTH as u8;
+    header[0x20] = PRODOS_ENTRIES_PER_BLOCK as u8;
+    put_u16(&mut header, 0x21, 1);
+    put_u16(&mut header, 0x23, 6);
+    put_u16(&mut header, 0x25, 12);
+    put_entry(&mut image, 2, 0, &header);
+    put_entry(
+        &mut image,
+        2,
+        1,
+        &entry_bytes("Read.Me", StorageType::Extended, 8, 0),
+    );
+
+    extended_fork(&mut image, 8, 0, 1, 9, 4);
+    extended_fork(&mut image, 8, 256, 1, 10, 5);
+    image[9 * BLOCK_SIZE..9 * BLOCK_SIZE + 4].copy_from_slice(b"DATA");
+    image[10 * BLOCK_SIZE..10 * BLOCK_SIZE + 5].copy_from_slice(b"RSRC!");
+
+    let volume = Volume::from_device(BlockDevice::from_bytes(image).unwrap()).unwrap();
+    let node = volume.find("Read.Me", MetadataMode::Xattr).unwrap();
+
+    assert_eq!(node.effective_storage_type(), StorageType::Seedling);
+    assert_eq!(node.effective_eof(), 4);
+    assert_eq!(node.effective_blocks_used(), 1);
+    assert_eq!(volume.read_entry(&node.entry).unwrap(), b"DATA");
+    assert_eq!(volume.read_resource_fork(&node.entry).unwrap(), b"RSRC!");
+}
+
+#[test]
+fn allows_zero_length_files_without_a_key_block() {
+    let mut image = vec![0_u8; BLOCK_SIZE * 8];
+    directory_links(&mut image, 2, 0, 0);
+
+    let mut header = [0_u8; PRODOS_ENTRY_LENGTH];
+    header[0] = (StorageType::VolumeHeader as u8) << 4 | 6;
+    header[1..7].copy_from_slice(b"EMPTY ");
+    header[0x1e] = 0xe3;
+    header[0x1f] = PRODOS_ENTRY_LENGTH as u8;
+    header[0x20] = PRODOS_ENTRIES_PER_BLOCK as u8;
+    put_u16(&mut header, 0x21, 1);
+    put_u16(&mut header, 0x23, 6);
+    put_u16(&mut header, 0x25, 8);
+    put_entry(&mut image, 2, 0, &header);
+
+    let file = entry_bytes("EMPTY", StorageType::Seedling, 0, 0);
+    put_entry(&mut image, 2, 1, &file);
+
+    let volume = Volume::from_device(BlockDevice::from_bytes(image).unwrap()).unwrap();
+    let node = volume.find("EMPTY", MetadataMode::Xattr).unwrap();
+
+    assert_eq!(volume.read_entry(&node.entry).unwrap(), Vec::<u8>::new());
+}
+
+#[test]
+fn rejects_extended_files_without_a_key_block() {
+    let mut image = vec![0_u8; BLOCK_SIZE * 8];
+    directory_links(&mut image, 2, 0, 0);
+
+    let mut header = [0_u8; PRODOS_ENTRY_LENGTH];
+    header[0] = (StorageType::VolumeHeader as u8) << 4 | 6;
+    header[1..7].copy_from_slice(b"BROKEN");
+    header[0x1e] = 0xe3;
+    header[0x1f] = PRODOS_ENTRY_LENGTH as u8;
+    header[0x20] = PRODOS_ENTRIES_PER_BLOCK as u8;
+    put_u16(&mut header, 0x21, 1);
+    put_u16(&mut header, 0x23, 6);
+    put_u16(&mut header, 0x25, 8);
+    put_entry(&mut image, 2, 0, &header);
+    put_entry(
+        &mut image,
+        2,
+        1,
+        &entry_bytes("Read.Me", StorageType::Extended, 0, 0),
+    );
+
+    let error = Volume::from_device(BlockDevice::from_bytes(image).unwrap()).unwrap_err();
+    assert!(matches!(error, A2FuseError::InvalidDirectoryEntry(_)));
+}
+
 fn entry(name: &str, storage_type: StorageType, key_pointer: u16, eof: u32) -> DirectoryEntry {
     DirectoryEntry {
         name: name.to_owned(),
@@ -198,6 +287,23 @@ fn set_index_pointer(image: &mut [u8], block: usize, position: usize, pointer: u
     let start = block * BLOCK_SIZE;
     image[start + position] = pointer as u8;
     image[start + 256 + position] = (pointer >> 8) as u8;
+}
+
+fn extended_fork(
+    image: &mut [u8],
+    block: usize,
+    offset: usize,
+    storage_type: u8,
+    key_block: u16,
+    eof: u32,
+) {
+    let start = block * BLOCK_SIZE + offset;
+    image[start] = storage_type;
+    put_u16(image, start + 1, key_block);
+    put_u16(image, start + 3, 1);
+    image[start + 5] = eof as u8;
+    image[start + 6] = (eof >> 8) as u8;
+    image[start + 7] = (eof >> 16) as u8;
 }
 
 fn put_u16(bytes: &mut [u8], offset: usize, value: u16) {

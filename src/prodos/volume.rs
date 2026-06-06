@@ -4,7 +4,9 @@ use crate::error::{A2FuseError, Result};
 
 use super::block::BlockDevice;
 use super::directory::{Directory, DirectoryEntry, PRODOS_ENTRY_LENGTH};
-use super::file;
+use super::file::{
+    FileFork, extended_key_block, read_extended_data_fork, read_extended_resource_fork, read_fork,
+};
 use super::path::{MetadataMode, decode_filename_with_case, host_filename};
 use super::types::{AccessFlags, ProdosTimestamp, StorageType};
 
@@ -72,6 +74,8 @@ impl VolumeHeader {
 #[derive(Clone, Debug)]
 pub struct Node {
     pub entry: DirectoryEntry,
+    pub data_fork: Option<FileFork>,
+    pub resource_fork: Option<FileFork>,
     pub children: Vec<Node>,
 }
 
@@ -82,6 +86,28 @@ impl Node {
 
     pub fn is_directory(&self) -> bool {
         self.entry.is_directory()
+    }
+
+    pub fn is_extended_file(&self) -> bool {
+        self.resource_fork.is_some()
+    }
+
+    pub fn effective_eof(&self) -> u32 {
+        self.data_fork
+            .as_ref()
+            .map_or(self.entry.eof, |fork| fork.eof)
+    }
+
+    pub fn effective_blocks_used(&self) -> u16 {
+        self.data_fork
+            .as_ref()
+            .map_or(self.entry.blocks_used, |fork| fork.blocks_used)
+    }
+
+    pub fn effective_storage_type(&self) -> StorageType {
+        self.data_fork
+            .as_ref()
+            .map_or(self.entry.storage_type, |fork| fork.storage_type)
     }
 }
 
@@ -124,7 +150,19 @@ impl Volume {
     }
 
     pub fn read_entry(&self, entry: &DirectoryEntry) -> Result<Vec<u8>> {
-        file::read_file(&self.device, entry)
+        if entry.storage_type == StorageType::Extended {
+            read_extended_data_fork(&self.device, entry)
+        } else {
+            read_fork(&self.device, &FileFork::from_entry(entry))
+        }
+    }
+
+    pub fn read_fork(&self, fork: &FileFork) -> Result<Vec<u8>> {
+        read_fork(&self.device, fork)
+    }
+
+    pub fn read_resource_fork(&self, entry: &DirectoryEntry) -> Result<Vec<u8>> {
+        read_extended_resource_fork(&self.device, entry)
     }
 
     pub fn find<'a>(&'a self, path: &str, metadata_mode: MetadataMode) -> Result<&'a Node> {
@@ -161,7 +199,7 @@ impl Volume {
 
         let mut nodes = Vec::with_capacity(directory.entries.len());
         for entry in directory.entries {
-            let children = if entry.is_directory() {
+            let (data_fork, resource_fork, children) = if entry.is_directory() {
                 if entry.key_pointer == 0 {
                     return Err(A2FuseError::InvalidDirectory(format!(
                         "subdirectory {} has no key block",
@@ -169,11 +207,30 @@ impl Volume {
                     )));
                 }
                 let child_directory = Directory::read(device, entry.key_pointer)?;
-                Self::load_nodes(device, child_directory, ancestors)?
+                let children = Self::load_nodes(device, child_directory, ancestors)?;
+                (None, None, children)
+            } else if entry.storage_type == StorageType::Extended {
+                let extended = extended_key_block(device, &entry)?;
+                (
+                    Some(extended.data_fork),
+                    Some(extended.resource_fork),
+                    Vec::new(),
+                )
             } else {
-                Vec::new()
+                if entry.eof > 0 && entry.key_pointer == 0 {
+                    return Err(A2FuseError::InvalidDirectoryEntry(format!(
+                        "{} has no key block",
+                        entry.name
+                    )));
+                }
+                (Some(FileFork::from_entry(&entry)), None, Vec::new())
             };
-            nodes.push(Node { entry, children });
+            nodes.push(Node {
+                entry,
+                data_fork,
+                resource_fork,
+                children,
+            });
         }
 
         ancestors.pop();

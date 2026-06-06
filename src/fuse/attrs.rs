@@ -8,13 +8,14 @@ use super::inode::Inode;
 
 pub fn file_attr(inode: &Inode, uid: u32, gid: u32) -> FileAttr {
     let entry = inode.entry.as_ref();
+    let fork = inode.fork.as_ref();
     let kind = if inode.is_directory() {
         FileType::Directory
     } else {
         FileType::RegularFile
     };
-    let size = entry.map_or(0, |entry| u64::from(entry.eof));
-    let blocks = entry.map_or(0, |entry| u64::from(entry.blocks_used));
+    let size = fork.map_or(0, |fork| u64::from(fork.eof));
+    let blocks = fork.map_or(0, |fork| u64::from(fork.blocks_used));
     let creation = entry
         .and_then(|entry| entry.creation)
         .and_then(timestamp_to_system_time)

@@ -2,6 +2,10 @@ use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use clap::Parser;
+
+use a2fuse::cli::Cli;
+
 static NEXT_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
 
 #[test]
@@ -58,6 +62,18 @@ fn creates_imports_lists_and_reads_an_image() {
     assert_eq!(output.stdout, b"Hello from ProDOS\n");
 
     fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn mount_requires_the_subcommand() {
+    let result = Cli::try_parse_from(["a2fuse", "image.po", "/mnt/apple2"]);
+    assert!(result.is_err());
+}
+
+#[test]
+fn mount_parses_with_the_subcommand() {
+    let cli = Cli::try_parse_from(["a2fuse", "mount", "image.po", "/mnt/apple2"]).unwrap();
+    assert!(matches!(cli.command, Some(a2fuse::cli::Command::Mount(_))));
 }
 
 fn command() -> Command {

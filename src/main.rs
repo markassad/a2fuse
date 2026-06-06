@@ -1,16 +1,17 @@
-mod cli;
-
 use std::io::Write;
 use std::path::Path;
 
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
+use a2fuse::cli::{Cli, Command, MountArgs};
 use a2fuse::error::{A2FuseError, Result};
 use a2fuse::prodos::{
     AccessFlags, CreateOptions, Image, MetadataMode, Node, ProdosTimestamp, PutOptions, Volume,
 };
-use cli::{Cli, Command, MountArgs};
+
+#[cfg(feature = "macfuse")]
+use std::sync::mpsc;
 
 fn main() {
     if let Err(error) = run() {
@@ -64,18 +65,9 @@ fn run() -> Result<()> {
             image.put_file(&data, &options)?;
             image.save(&args.image)
         }
-        None => mount(MountArgs {
-            image: cli.image.ok_or_else(|| {
-                A2FuseError::Fuse(
-                    "an image and mount point are required when no subcommand is used".to_owned(),
-                )
-            })?,
-            mountpoint: cli.mountpoint.ok_or_else(|| {
-                A2FuseError::Fuse("a mount point is required when no subcommand is used".to_owned())
-            })?,
-            readonly: cli.readonly,
-            metadata: cli.metadata,
-        }),
+        None => Err(A2FuseError::Fuse(
+            "a subcommand is required; use `a2fuse mount IMAGE MOUNTPOINT`".to_owned(),
+        )),
     }
 }
 
@@ -100,7 +92,33 @@ fn mount(args: MountArgs) -> Result<()> {
         files = volume.header.file_count,
         "opened ProDOS image"
     );
-    a2fuse::fuse::mount(volume, &args.mountpoint, args.metadata)
+    #[cfg(feature = "macfuse")]
+    {
+        let session = a2fuse::fuse::spawn_mount(volume, &args.mountpoint, args.metadata)?;
+        wait_for_shutdown_signal()?;
+        session
+            .umount_and_join()
+            .map_err(|error| A2FuseError::Fuse(error.to_string()))
+    }
+
+    #[cfg(not(feature = "macfuse"))]
+    {
+        let _ = (volume, args);
+        Err(A2FuseError::FuseDisabled)
+    }
+}
+
+#[cfg(feature = "macfuse")]
+fn wait_for_shutdown_signal() -> Result<()> {
+    let (sender, receiver) = mpsc::channel();
+    ctrlc::set_handler(move || {
+        let _ = sender.send(());
+    })
+    .map_err(|error| A2FuseError::Fuse(error.to_string()))?;
+    receiver
+        .recv()
+        .map_err(|error| A2FuseError::Fuse(error.to_string()))?;
+    Ok(())
 }
 
 fn list(image: &Path, path: Option<&str>, long: bool) -> Result<()> {
@@ -154,7 +172,10 @@ fn print_unix_node(node: &Node, long: bool) {
         let links = if node.is_directory() { 2 } else { 1 };
         println!(
             "{permissions} {links:>2} {:<6} {:<6} {:>10} {modified} {}",
-            "prodos", "prodos", node.entry.eof, node.entry.name
+            "prodos",
+            "prodos",
+            node.effective_eof(),
+            node.entry.name
         );
     } else {
         println!("{}", node.entry.name);
@@ -166,10 +187,10 @@ fn print_catalogue_node(node: &Node) {
         " {:<15} {:>4} {:>6}  {:<16} {:<16} {:>8}  ${:04X}",
         node.entry.name,
         prodos_type_name(node),
-        node.entry.blocks_used,
+        node.effective_blocks_used(),
         format_catalogue_timestamp(node.entry.modification),
         format_catalogue_timestamp(node.entry.creation),
-        node.entry.eof,
+        node.effective_eof(),
         node.entry.aux_type
     );
 }
