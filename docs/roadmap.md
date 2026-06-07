@@ -55,23 +55,24 @@ Planned additions:
 Status: experimental first slice implemented.
 
 - create raw ProDOS-order images;
-- add root-directory regular files;
+- create root and nested subdirectories;
+- add regular files to the root or existing subdirectories;
 - allocate seedling, sapling, and tree storage;
 - validate bitmap placement;
+- roll back failed in-memory mutations;
 - save through temporary-file replacement;
 - round-trip written images through the read-only parser.
 
 Before expanding this layer:
 
-- add rollback within in-memory mutations;
 - test more fragmented and sparse allocation patterns;
 - verify generated images with independent ProDOS tools;
 - add freely redistributable compatibility fixtures.
 
 Next operations:
 
-1. create subdirectories;
-2. extract directory trees;
+1. grow full directory chains;
+2. import and extract directory trees recursively;
 3. replace files safely;
 4. rename entries;
 5. delete entries and release blocks;
@@ -80,7 +81,7 @@ Next operations:
 
 ## Milestone 5: broader compatibility
 
-- support extended files and resource forks;
+- add write support for extended files and resource forks;
 - detect or explicitly handle 2MG containers;
 - improve Finder interoperability without accepting mounted writes;
 - add filesystem consistency checking and diagnostics;

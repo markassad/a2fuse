@@ -36,6 +36,9 @@ pub enum Command {
     /// Create an empty ProDOS-order disk image.
     Create(CreateArgs),
 
+    /// Download and cache the upstream ProDOS system image.
+    FetchProdos(FetchProdosArgs),
+
     /// List files using Unix-style output.
     Ls(ListArgs),
 
@@ -45,7 +48,10 @@ pub enum Command {
     /// Copy a file from the image to the host.
     Get(GetArgs),
 
-    /// Copy a host file into the image root directory.
+    /// Create a directory inside an image.
+    Mkdir(MkdirArgs),
+
+    /// Copy a host file into the image.
     #[command(visible_alias = "add")]
     Put(PutArgs),
 }
@@ -80,6 +86,25 @@ pub struct CreateArgs {
     /// Replace an existing destination image.
     #[arg(long)]
     pub force: bool,
+
+    /// Install boot blocks and a `PRODOS` system file from a cached upstream image.
+    #[arg(long)]
+    pub bootable: bool,
+
+    /// Cache directory for downloaded ProDOS system images.
+    #[arg(long)]
+    pub cache_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct FetchProdosArgs {
+    /// Replace any existing cached copy.
+    #[arg(long)]
+    pub force: bool,
+
+    /// Cache directory for downloaded ProDOS system images.
+    #[arg(long)]
+    pub cache_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -114,11 +139,23 @@ pub struct GetArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct MkdirArgs {
+    pub image: PathBuf,
+
+    /// Directory path inside the image.
+    pub path: String,
+
+    /// Create missing parent directories and accept existing directories.
+    #[arg(short, long)]
+    pub parents: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct PutArgs {
     pub image: PathBuf,
     pub source: PathBuf,
 
-    /// Destination filename in the image root; defaults to the host filename.
+    /// Destination path in the image; defaults to the host filename in the root.
     pub destination: Option<String>,
 
     /// ProDOS file type, in decimal, `0xNN`, or `$NN` form.

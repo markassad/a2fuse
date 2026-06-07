@@ -13,6 +13,7 @@ tested with artificial byte arrays and used by other tools.
 - [Documentation index](docs/README.md)
 - [Design](docs/design.md)
 - [Supported ProDOS format](docs/prodos-format.md)
+- [ProDOS format references](docs/prodos-references.md)
 - [Roadmap](docs/roadmap.md)
 - [Contributing](docs/development/contributing.md)
 
@@ -26,7 +27,7 @@ The project currently:
 
 - accepts ProDOS-order images made from 512-byte blocks, commonly named `.po`;
 - creates empty ProDOS volumes;
-- imports files into the volume root directory;
+- imports files into the volume root or existing subdirectories;
 - lists files and extracts files to the host;
 - parses the volume directory and chained subdirectories;
 - exposes seedling, sapling, and tree files;
@@ -98,22 +99,54 @@ Create a standard 140 KB, 280-block image:
 cargo run -- create work.po --name WORK
 ```
 
+Create a bootable image (downloads and caches the upstream ProDOS 2.4.3 image if needed, then copies boot blocks, `PRODOS`, and `BASIC.SYSTEM`):
+
+```sh
+cargo run -- create boot.po --name BOOT --bootable
+```
+
+Download or refresh the cached upstream ProDOS image explicitly:
+
+```sh
+cargo run -- fetch-prodos
+cargo run -- fetch-prodos --force
+```
+
+By default, cached files are stored in:
+
+- `$XDG_CACHE_HOME/a2fuse` when `XDG_CACHE_HOME` is set;
+- otherwise `$HOME/.cache/a2fuse`;
+- otherwise the platform temporary directory.
+
 Choose another size in 512-byte blocks:
 
 ```sh
 cargo run -- create archive.po --name ARCHIVE --blocks 1600
 ```
 
-Import a host file into the root directory:
+Import host files into the root directory or an existing subdirectory:
 
 ```sh
 cargo run -- put work.po README.txt README --type '$04'
 cargo run -- put work.po PROGRAM.BIN PROGRAM --type '$06' --aux-type '$2000'
+cargo run -- mkdir --parents work.po GAMES/ARCADE
+cargo run -- put work.po GAME.BIN GAMES/ARCADE/GAME --type '$06'
 ```
 
-The destination name defaults to the host filename. ProDOS names must contain
-1 to 15 ASCII characters, begin with a letter, and otherwise contain only
-letters, digits, or periods.
+Create directories:
+
+```sh
+cargo run -- mkdir work.po GAMES
+cargo run -- mkdir --parents work.po GAMES/ARCADE
+```
+
+Without `--parents`, every parent directory must already exist. With
+`--parents`, missing parents are created and existing directories are accepted.
+
+For `put`, the destination path defaults to the host filename in the volume
+root. Parent directories in an explicit destination path must already exist.
+ProDOS path components must contain 1 to 15 ASCII characters, begin with a
+letter, and otherwise contain only letters, digits, or periods.
 
 List or extract files:
 
@@ -123,6 +156,7 @@ cargo run -- ls work.po --long
 cargo run -- catalog work.po
 cargo run -- get work.po README README.txt
 cargo run -- get work.po PROGRAM PROGRAM.BIN
+cargo run -- get work.po GAMES/ARCADE/GAME GAME.BIN
 cargo run -- get work.po README -
 ```
 
@@ -213,11 +247,14 @@ brew install markassad/a2fuse/a2fuse
 - Images with 2MG headers, DOS 3.3 sector ordering, nibble encoding, or other
   container formats are not detected or converted.
 - The filesystem is strictly read-only.
-- Image mutation currently supports adding regular files to the root directory.
-- Creating subdirectories, replacing, renaming, deleting, and changing metadata
-  are not yet implemented.
-- New image files have zeroed ProDOS timestamps and no boot loader.
-- Extended files and resource forks are not yet supported.
+- Image mutation currently supports creating directories and adding regular
+  files to the root or existing subdirectories.
+- Replacing, renaming, deleting, recursively importing or extracting directory
+  trees, and changing metadata are not yet implemented.
+- New image files have zeroed ProDOS timestamps.
+- The project does not bundle ProDOS system files; `fetch-prodos` downloads them
+  into a local cache on demand.
+- Extended-file data and resource forks can be read, but cannot yet be written.
 - ProDOS sparse file blocks are returned as zero-filled data.
 - Finder-specific metadata writes are rejected; command-line use is the
   primary target for this version.
@@ -226,12 +263,13 @@ brew install markassad/a2fuse/a2fuse
 
 ## Roadmap
 
-1. Add directory creation, extraction, replacement, rename, and deletion.
+1. Add recursive directory import and extraction, replacement, rename, and
+   deletion.
 2. Add automatic host-file metadata inference and preservation sidecars.
 3. Add more corrupt-image and real-world compatibility tests using freely
    redistributable fixtures.
 4. Improve Finder interoperability without accepting metadata writes.
-5. Support ProDOS extended files and resource forks.
+5. Add write support for ProDOS extended files and resource forks.
 
 No copyrighted disk images are included. Tests construct small artificial
 fixtures in memory.

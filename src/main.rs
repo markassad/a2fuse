@@ -4,10 +4,11 @@ use std::path::Path;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
-use a2fuse::cli::{Cli, Command, MountArgs};
+use a2fuse::cli::{Cli, Command, FetchProdosArgs, MountArgs};
 use a2fuse::error::{A2FuseError, Result};
 use a2fuse::prodos::{
-    AccessFlags, CreateOptions, Image, MetadataMode, Node, ProdosTimestamp, PutOptions, Volume,
+    AccessFlags, CreateOptions, Image, MetadataMode, MkdirOptions, Node, ProdosTimestamp,
+    PutOptions, Volume, ensure_cached_prodos, read_boot_components,
 };
 
 #[cfg(feature = "macfuse")]
@@ -27,19 +28,37 @@ fn run() -> Result<()> {
     match cli.command {
         Some(Command::Mount(args)) => mount(args),
         Some(Command::Create(args)) => {
-            let image = Image::create(&CreateOptions {
+            let mut image = Image::create(&CreateOptions {
                 name: args.name,
                 blocks: args.blocks,
             })?;
+            if args.bootable {
+                let cached = ensure_cached_prodos(false, args.cache_dir.as_deref())?;
+                let components = read_boot_components(&cached)?;
+                image.install_bootable_components(
+                    &components.boot_blocks,
+                    &components.prodos_system,
+                    &components.basic_system,
+                )?;
+            }
             if args.force {
                 image.save(&args.image)
             } else {
                 image.save_new(&args.image)
             }
         }
+        Some(Command::FetchProdos(args)) => fetch_prodos(args),
         Some(Command::Ls(args)) => list(&args.image, args.path.as_deref(), args.long),
         Some(Command::Catalog(args)) => catalog(&args.image, args.path.as_deref()),
         Some(Command::Get(args)) => get(&args.image, &args.source, args.destination.as_deref()),
+        Some(Command::Mkdir(args)) => {
+            let mut image = Image::open(&args.image)?;
+            let mut options = MkdirOptions::new(args.path);
+            options.parents = args.parents;
+            image.create_directory(&options)?;
+            image.save(&args.image)
+        }
+
         Some(Command::Put(args)) => {
             let data = std::fs::read(&args.source).map_err(|source| A2FuseError::ReadHostFile {
                 path: args.source.clone(),
@@ -65,10 +84,17 @@ fn run() -> Result<()> {
             image.put_file(&data, &options)?;
             image.save(&args.image)
         }
+
         None => Err(A2FuseError::Fuse(
             "a subcommand is required; use `a2fuse mount IMAGE MOUNTPOINT`".to_owned(),
         )),
     }
+}
+
+fn fetch_prodos(args: FetchProdosArgs) -> Result<()> {
+    let path = ensure_cached_prodos(args.force, args.cache_dir.as_deref())?;
+    println!("{}", path.display());
+    Ok(())
 }
 
 fn initialise_tracing(debug: bool) {

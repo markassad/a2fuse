@@ -3,6 +3,8 @@
 - [Design](design.md): architecture, component boundaries, and safety rules.
 - [ProDOS format](prodos-format.md): supported on-disk structures and current
   format limitations.
+- [ProDOS references](prodos-references.md): primary manuals, technical notes,
+  and a source map for the implementation.
 - [Roadmap](roadmap.md): completed milestones and planned work.
 - [Contributing](development/contributing.md): development setup, testing, and
   contribution guidelines.

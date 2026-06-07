@@ -28,7 +28,8 @@ The crate is divided into three layers.
 - `directory.rs`: directory entry and linked-directory parsing;
 - `file.rs`: seedling, sapling, and tree file resolution;
 - `volume.rs`: volume header parsing and the in-memory directory tree;
-- `writer.rs`: experimental offline image creation and root-file import.
+- `writer.rs`: experimental offline image creation, directories, and file
+  import.
 
 Code in this layer must not depend on FUSE. Parsing APIs operate on byte-backed
 block devices and return structured errors.
@@ -55,15 +56,9 @@ offline writer is not reachable from the FUSE adapter.
 dispatch and presentation only. It should not contain ProDOS parsing or block
 allocation rules.
 
-The original mount form remains supported:
-
-```text
-a2fuse image.po mountpoint
-```
-
-Explicit image commands use subcommands such as `create`, `ls`, `catalog`,
-`get`, and `put`. `ls` presents host-oriented Unix-style output, while
-`catalog` presents ProDOS-native metadata in an Apple II-style layout.
+Explicit image commands use subcommands such as `create`, `mkdir`, `ls`,
+`catalog`, `get`, and `put`. `ls` presents host-oriented Unix-style output,
+while `catalog` presents ProDOS-native metadata in an Apple II-style layout.
 
 ## Error handling
 
@@ -103,7 +98,7 @@ in memory to cover:
 - filename and lowercase-flag decoding;
 - directory entry parsing and linked blocks;
 - seedling, sapling, tree, and sparse-file reads;
-- image creation, allocation, import, and parser round trips;
+- image creation, allocation, root and nested import, and parser round trips;
 - command-line create/import/list/read workflows.
 
 FUSE integration tests are separate because they require macOS, macFUSE, and a

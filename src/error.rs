@@ -63,10 +63,10 @@ pub enum A2FuseError {
     #[error("invalid ProDOS name {name:?}: {reason}")]
     InvalidName { name: String, reason: String },
 
-    #[error("file already exists in image: {0}")]
+    #[error("entry already exists in image: {0}")]
     FileExists(String),
 
-    #[error("the ProDOS volume directory is full")]
+    #[error("the target ProDOS directory is full")]
     DirectoryFull,
 
     #[error("the ProDOS volume does not have enough free blocks")]
@@ -77,6 +77,19 @@ pub enum A2FuseError {
 
     #[error("invalid image size: {0}")]
     InvalidVolumeSize(String),
+
+    #[error("invalid boot block payload: {0}")]
+    InvalidBootBlocks(String),
+
+    #[error("could not create cache directory {path}: {source}")]
+    CreateCacheDirectory {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("download failed from {url}: {reason}")]
+    Download { url: String, reason: String },
 
     #[error("could not write command output: {0}")]
     Output(#[source] std::io::Error),

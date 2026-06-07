@@ -15,9 +15,11 @@ clap = { version = "4.5", features = ["derive"] }
 ctrlc = "3.5"
 fuser = { version = "0.17", optional = true, features = ["macfuse-4-compat"] }
 libc = { version = "0.2", optional = true }
+sha2 = "0.10"
 thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ureq = { version = "2.10", default-features = true }
 
 [profile.release]
 lto = "thin"

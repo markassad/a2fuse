@@ -30,6 +30,24 @@ fn creates_imports_lists_and_reads_an_image() {
             "$0000",
         ])
         .assert_success();
+    command()
+        .args([
+            "mkdir",
+            image.to_str().unwrap(),
+            "Games/Arcade",
+            "--parents",
+        ])
+        .assert_success();
+    command()
+        .args([
+            "put",
+            image.to_str().unwrap(),
+            source.to_str().unwrap(),
+            "Games/Arcade/Nested",
+            "--type",
+            "$04",
+        ])
+        .assert_success();
 
     let listing = command()
         .args(["ls", image.to_str().unwrap(), "--long"])
@@ -39,7 +57,10 @@ fn creates_imports_lists_and_reads_an_image() {
     let listing = String::from_utf8(listing.stdout).unwrap();
     assert_eq!(
         listing,
-        "-rw-r--r--  1 prodos prodos         18 ---- -- -- --:-- Hello\n"
+        concat!(
+            "-rw-r--r--  1 prodos prodos         18 ---- -- -- --:-- Hello\n",
+            "drwxr-xr-x  2 prodos prodos        512 ---- -- -- --:-- Games\n",
+        )
     );
 
     let catalogue = command()
@@ -50,9 +71,28 @@ fn creates_imports_lists_and_reads_an_image() {
     let catalogue = String::from_utf8(catalogue.stdout).unwrap();
     assert!(catalogue.starts_with("/TestDisk\n\n NAME"));
     assert!(catalogue.contains("Hello            TXT"));
+    assert!(catalogue.contains("Games            DIR"));
     assert!(catalogue.contains("<NO DATE>"));
     assert!(catalogue.contains("      18  $0000"));
-    assert!(catalogue.ends_with("\n1 FILE(S)\n"));
+    assert!(catalogue.ends_with("\n2 FILE(S)\n"));
+
+    let nested_listing = command()
+        .args(["ls", image.to_str().unwrap(), "Games/Arcade"])
+        .output()
+        .unwrap();
+    assert!(nested_listing.status.success());
+    assert_eq!(nested_listing.stdout, b"Nested\n");
+
+    let nested_extracted = directory.join("nested.txt");
+    command()
+        .args([
+            "get",
+            image.to_str().unwrap(),
+            "Games/Arcade/Nested",
+            nested_extracted.to_str().unwrap(),
+        ])
+        .assert_success();
+    assert_eq!(fs::read(&nested_extracted).unwrap(), b"Hello from ProDOS\n");
 
     let extracted = directory.join("extracted.txt");
     command()
@@ -95,6 +135,38 @@ fn mount_requires_the_subcommand() {
 fn mount_parses_with_the_subcommand() {
     let cli = Cli::try_parse_from(["a2fuse", "mount", "image.po", "/mnt/apple2"]).unwrap();
     assert!(matches!(cli.command, Some(a2fuse::cli::Command::Mount(_))));
+}
+
+#[test]
+fn create_parses_bootable_flags() {
+    let cli = Cli::try_parse_from([
+        "a2fuse",
+        "create",
+        "image.po",
+        "--name",
+        "TEST",
+        "--bootable",
+        "--cache-dir",
+        "/tmp/a2fuse-cache",
+    ])
+    .unwrap();
+    assert!(matches!(cli.command, Some(a2fuse::cli::Command::Create(_))));
+}
+
+#[test]
+fn fetch_prodos_parses() {
+    let cli = Cli::try_parse_from([
+        "a2fuse",
+        "fetch-prodos",
+        "--force",
+        "--cache-dir",
+        "/tmp/a2fuse-cache",
+    ])
+    .unwrap();
+    assert!(matches!(
+        cli.command,
+        Some(a2fuse::cli::Command::FetchProdos(_))
+    ));
 }
 
 fn command() -> Command {
