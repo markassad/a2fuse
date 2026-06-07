@@ -27,7 +27,7 @@ The project currently:
 - accepts ProDOS-order images made from 512-byte blocks, commonly named `.po`;
 - creates empty ProDOS volumes;
 - imports files into the volume root directory;
-- lists files and writes file contents to standard output;
+- lists files and extracts files to the host;
 - parses the volume directory and chained subdirectories;
 - exposes seedling, sapling, and tree files;
 - preserves ProDOS file type, auxiliary type, access flags, storage type,
@@ -73,6 +73,15 @@ cargo build
 cargo test
 ```
 
+Enable the repository's native pre-commit and pre-push checks once per clone:
+
+```sh
+./scripts/install-git-hooks.sh
+```
+
+See the [contributing guide](docs/development/contributing.md#git-hooks) for
+the commands run by each hook.
+
 The default build deliberately excludes the macFUSE runtime so parser tests do
 not require a mounted or installed FUSE environment. Build the mountable binary
 with:
@@ -106,14 +115,15 @@ The destination name defaults to the host filename. ProDOS names must contain
 1 to 15 ASCII characters, begin with a letter, and otherwise contain only
 letters, digits, or periods.
 
-List or read files:
+List or extract files:
 
 ```sh
 cargo run -- ls work.po
 cargo run -- ls work.po --long
 cargo run -- catalog work.po
-cargo run -- cat work.po README
-cargo run -- cat work.po PROGRAM > PROGRAM.BIN
+cargo run -- get work.po README README.txt
+cargo run -- get work.po PROGRAM PROGRAM.BIN
+cargo run -- get work.po README -
 ```
 
 `ls` uses host-oriented Unix-style output. Its `--long` form shows permissions,
@@ -121,7 +131,10 @@ link count, synthetic owner and group names, byte size, and modification time.
 `catalog` uses an Apple II-style ProDOS catalogue with file types, allocated
 blocks, ProDOS timestamps, EOF, and auxiliary types.
 
-`view` and `add` are aliases for `cat` and `put`.
+When no destination is supplied, `get` uses the ProDOS filename in the current
+directory. A destination of `-` writes the file to standard output.
+
+`add` is an alias for `put`.
 
 ## macOS Mount Usage
 
@@ -167,6 +180,31 @@ Filename metadata mode produces names such as:
 
 ```text
 NAME,t$ff,a$2000
+```
+
+## macOS Gatekeeper Warning
+
+When downloading a binary from GitHub Releases, macOS may display:
+
+> Apple could not verify "a2fuse" is free of malware that may harm your Mac or compromise your privacy.
+
+This occurs because the binary is unsigned. To resolve:
+
+**Option 1: Remove the quarantine flag**
+
+```sh
+xattr -d com.apple.quarantine ./a2fuse
+./a2fuse mount image.po ~/mnt/apple2
+```
+
+**Option 2: Use Finder**
+
+Right-click the downloaded binary and select "Open". macOS will ask for confirmation once, then allow future runs.
+
+**Option 3: Install via Homebrew** (planned)
+
+```sh
+brew install markassad/a2fuse/a2fuse
 ```
 
 ## Current limitations

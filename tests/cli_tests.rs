@@ -54,8 +54,29 @@ fn creates_imports_lists_and_reads_an_image() {
     assert!(catalogue.contains("      18  $0000"));
     assert!(catalogue.ends_with("\n1 FILE(S)\n"));
 
+    let extracted = directory.join("extracted.txt");
+    command()
+        .args([
+            "get",
+            image.to_str().unwrap(),
+            "Hello",
+            extracted.to_str().unwrap(),
+        ])
+        .assert_success();
+    assert_eq!(fs::read(&extracted).unwrap(), b"Hello from ProDOS\n");
+
+    let mut default_get = command();
+    default_get
+        .current_dir(&directory)
+        .args(["get", image.to_str().unwrap(), "Hello"])
+        .assert_success();
+    assert_eq!(
+        fs::read(directory.join("Hello")).unwrap(),
+        b"Hello from ProDOS\n"
+    );
+
     let output = command()
-        .args(["cat", image.to_str().unwrap(), "Hello"])
+        .args(["get", image.to_str().unwrap(), "Hello", "-"])
         .output()
         .unwrap();
     assert!(output.status.success());

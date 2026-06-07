@@ -32,14 +32,8 @@ jobs:
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Check formatting
-        run: cargo fmt --all --check
-
-      - name: Run tests
-        run: cargo test --locked --all-targets
-
-      - name: Run clippy
-        run: cargo clippy --locked --all-targets --no-default-features -- -D warnings
+      - name: Run standard checks
+        run: ./scripts/ci-checks.sh
 
       - name: Install macFUSE build dependencies
         if: runner.os == 'macOS'
@@ -49,4 +43,4 @@ jobs:
 
       - name: Check macFUSE feature build
         if: runner.os == 'macOS'
-        run: cargo check --locked --features macfuse
+        run: ./scripts/ci-checks.sh --fuse-only

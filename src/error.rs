@@ -23,6 +23,13 @@ pub enum A2FuseError {
         source: std::io::Error,
     },
 
+    #[error("could not write host file {path}: {source}")]
+    WriteHostFile {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
     #[error("disk image already exists: {0}")]
     ImageExists(PathBuf),
 

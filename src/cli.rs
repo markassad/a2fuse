@@ -42,9 +42,8 @@ pub enum Command {
     /// Display an Apple II-style ProDOS catalogue.
     Catalog(CatalogArgs),
 
-    /// Write an image file to standard output.
-    #[command(visible_alias = "view")]
-    Cat(CatArgs),
+    /// Copy a file from the image to the host.
+    Get(GetArgs),
 
     /// Copy a host file into the image root directory.
     #[command(visible_alias = "add")]
@@ -104,9 +103,14 @@ pub struct CatalogArgs {
 }
 
 #[derive(Debug, Args)]
-pub struct CatArgs {
+pub struct GetArgs {
     pub image: PathBuf,
-    pub path: String,
+
+    /// Source path inside the image.
+    pub source: String,
+
+    /// Host destination; defaults to the ProDOS filename. Use `-` for stdout.
+    pub destination: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]

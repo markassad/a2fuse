@@ -9,8 +9,7 @@ Parser and image-tool development requires a current stable Rust toolchain:
 
 ```sh
 cargo build
-cargo test
-cargo clippy --all-targets --no-default-features -- -D warnings
+./scripts/ci-checks.sh
 ```
 
 To compile the macFUSE adapter on macOS:
@@ -23,6 +22,34 @@ cargo clippy --all-targets --features macfuse -- -D warnings
 
 Mount tests require a working local macFUSE installation and should not be
 required for ordinary parser tests.
+
+## Git hooks
+
+The repository includes native Git hooks that run the same commands as CI.
+Enable them once per clone:
+
+```sh
+./scripts/install-git-hooks.sh
+```
+
+The hooks are:
+
+- `pre-commit`: formatting, all test targets, and Clippy;
+- `pre-push`: the same checks plus the FUSE feature build.
+
+The FUSE feature check requires the platform packages described above. On
+Linux, install the FUSE development package and `pkg-config` for your
+distribution.
+
+Run the complete pre-push suite manually with:
+
+```sh
+./scripts/ci-checks.sh --fuse
+```
+
+Git hooks can be bypassed with `git commit --no-verify` or
+`git push --no-verify`. This should be reserved for exceptional cases because
+GitHub Actions will still run the checks.
 
 ## Code organisation
 
@@ -49,11 +76,7 @@ arrays or images constructed in memory. Useful test categories include:
 - mutation round trips through the read-only parser;
 - command exit status and byte-for-byte output.
 
-Run formatting before submitting:
-
-```sh
-cargo fmt -- --check
-```
+Run `./scripts/ci-checks.sh` before submitting when hooks are not enabled.
 
 ## Test data
 

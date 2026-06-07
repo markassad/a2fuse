@@ -39,7 +39,7 @@ fn run() -> Result<()> {
         }
         Some(Command::Ls(args)) => list(&args.image, args.path.as_deref(), args.long),
         Some(Command::Catalog(args)) => catalog(&args.image, args.path.as_deref()),
-        Some(Command::Cat(args)) => cat(&args.image, &args.path),
+        Some(Command::Get(args)) => get(&args.image, &args.source, args.destination.as_deref()),
         Some(Command::Put(args)) => {
             let data = std::fs::read(&args.source).map_err(|source| A2FuseError::ReadHostFile {
                 path: args.source.clone(),
@@ -261,12 +261,23 @@ fn prodos_type_name(node: &Node) -> String {
     }
 }
 
-fn cat(image: &Path, path: &str) -> Result<()> {
+fn get(image: &Path, source: &str, destination: Option<&Path>) -> Result<()> {
     let volume = Volume::open(image)?;
-    let node = volume.find(path, MetadataMode::Xattr)?;
+    let node = volume.find(source, MetadataMode::Xattr)?;
     let data = volume.read_entry(&node.entry)?;
-    std::io::stdout()
-        .lock()
-        .write_all(&data)
-        .map_err(A2FuseError::Output)
+    let destination = destination
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| Path::new(&node.entry.name).to_path_buf());
+
+    if destination == Path::new("-") {
+        std::io::stdout()
+            .lock()
+            .write_all(&data)
+            .map_err(A2FuseError::Output)
+    } else {
+        std::fs::write(&destination, data).map_err(|source| A2FuseError::WriteHostFile {
+            path: destination,
+            source,
+        })
+    }
 }

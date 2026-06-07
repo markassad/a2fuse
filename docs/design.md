@@ -62,7 +62,7 @@ a2fuse image.po mountpoint
 ```
 
 Explicit image commands use subcommands such as `create`, `ls`, `catalog`,
-`cat`, and `put`. `ls` presents host-oriented Unix-style output, while
+`get`, and `put`. `ls` presents host-oriented Unix-style output, while
 `catalog` presents ProDOS-native metadata in an Apple II-style layout.
 
 ## Error handling

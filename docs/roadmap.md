@@ -40,13 +40,13 @@ Status: implemented.
 - list image contents;
 - provide separate Unix-style `ls` and ProDOS-style `catalog` views;
 - display detailed ProDOS metadata;
-- write a selected file to standard output;
+- extract a selected file to a host path or standard output;
 - keep inspection independent from FUSE.
 
 Planned additions:
 
 - recursive listings;
-- extraction to host directories;
+- recursive extraction to host directories;
 - optional metadata sidecars;
 - machine-readable output.
 
