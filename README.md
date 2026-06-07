@@ -131,6 +131,16 @@ cargo run -- put work.po README.txt README --type '$04'
 cargo run -- put work.po PROGRAM.BIN PROGRAM --type '$06' --aux-type '$2000'
 cargo run -- mkdir --parents work.po GAMES/ARCADE
 cargo run -- put work.po GAME.BIN GAMES/ARCADE/GAME --type '$06'
+cargo run -- put work.po PROGRAM.NEW PROGRAM --force
+```
+
+Tokenize or untokenize AppleSoft BASIC files for host-side editing:
+
+```sh
+cargo run -- basic-put work.po program.txt HELLO
+cargo run -- basic-put work.po updated.txt HELLO --force
+cargo run -- basic-get work.po HELLO HELLO.txt
+cargo run -- basic-get work.po HELLO -
 ```
 
 Create directories:
@@ -138,6 +148,13 @@ Create directories:
 ```sh
 cargo run -- mkdir work.po GAMES
 cargo run -- mkdir --parents work.po GAMES/ARCADE
+```
+
+Remove a regular file:
+
+```sh
+cargo run -- rm work.po README
+cargo run -- rm work.po GAMES/ARCADE/GAME
 ```
 
 Without `--parents`, every parent directory must already exist. With
@@ -249,8 +266,8 @@ brew install markassad/a2fuse/a2fuse
 - The filesystem is strictly read-only.
 - Image mutation currently supports creating directories and adding regular
   files to the root or existing subdirectories.
-- Replacing, renaming, deleting, recursively importing or extracting directory
-  trees, and changing metadata are not yet implemented.
+- Replacing, renaming, deleting directories, recursively importing or extracting
+  directory trees, and changing metadata are not yet implemented.
 - New image files have zeroed ProDOS timestamps.
 - The project does not bundle ProDOS system files; `fetch-prodos` downloads them
   into a local cache on demand.

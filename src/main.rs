@@ -1,14 +1,15 @@
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
-use a2fuse::cli::{Cli, Command, FetchProdosArgs, MountArgs};
+use a2fuse::cli::{BasicGetArgs, BasicPutArgs, Cli, Command, FetchProdosArgs, MountArgs};
 use a2fuse::error::{A2FuseError, Result};
 use a2fuse::prodos::{
     AccessFlags, CreateOptions, Image, MetadataMode, MkdirOptions, Node, ProdosTimestamp,
-    PutOptions, Volume, ensure_cached_prodos, read_boot_components,
+    PutOptions, RemoveOptions, Volume, detokenize_program, ensure_cached_prodos,
+    read_boot_components, tokenize_program,
 };
 
 #[cfg(feature = "macfuse")]
@@ -51,6 +52,7 @@ fn run() -> Result<()> {
         Some(Command::Ls(args)) => list(&args.image, args.path.as_deref(), args.long),
         Some(Command::Catalog(args)) => catalog(&args.image, args.path.as_deref()),
         Some(Command::Get(args)) => get(&args.image, &args.source, args.destination.as_deref()),
+        Some(Command::BasicGet(args)) => basic_get(args),
         Some(Command::Mkdir(args)) => {
             let mut image = Image::open(&args.image)?;
             let mut options = MkdirOptions::new(args.path);
@@ -58,25 +60,33 @@ fn run() -> Result<()> {
             image.create_directory(&options)?;
             image.save(&args.image)
         }
+        Some(Command::Rm(args)) => {
+            let mut image = Image::open(&args.image)?;
+            image.remove_file(&RemoveOptions::new(args.path))?;
+            image.save(&args.image)
+        }
 
         Some(Command::Put(args)) => {
-            let data = std::fs::read(&args.source).map_err(|source| A2FuseError::ReadHostFile {
-                path: args.source.clone(),
-                source,
-            })?;
+            let data = read_input_bytes(&args.source)?;
             let destination = match args.destination {
                 Some(destination) => destination,
-                None => args
-                    .source
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .ok_or_else(|| A2FuseError::InvalidName {
-                        name: args.source.display().to_string(),
-                        reason: "the host filename is not valid UTF-8".to_owned(),
-                    })?
-                    .to_owned(),
+                None => {
+                    if args.source == Path::new("-") {
+                        "STDIN".to_owned()
+                    } else {
+                        args.source
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .ok_or_else(|| A2FuseError::InvalidName {
+                                name: args.source.display().to_string(),
+                                reason: "the host filename is not valid UTF-8".to_owned(),
+                            })?
+                            .to_owned()
+                    }
+                }
             };
             let mut image = Image::open(&args.image)?;
+            remove_existing_if_forced(&mut image, &destination, args.force)?;
             let mut options = PutOptions::new(destination);
             options.file_type = args.file_type;
             options.aux_type = args.aux_type;
@@ -84,6 +94,7 @@ fn run() -> Result<()> {
             image.put_file(&data, &options)?;
             image.save(&args.image)
         }
+        Some(Command::BasicPut(args)) => basic_put(args),
 
         None => Err(A2FuseError::Fuse(
             "a subcommand is required; use `a2fuse mount IMAGE MOUNTPOINT`".to_owned(),
@@ -296,14 +307,113 @@ fn get(image: &Path, source: &str, destination: Option<&Path>) -> Result<()> {
         .unwrap_or_else(|| Path::new(&node.entry.name).to_path_buf());
 
     if destination == Path::new("-") {
-        std::io::stdout()
-            .lock()
-            .write_all(&data)
-            .map_err(A2FuseError::Output)
+        write_stdout(&data)
     } else {
         std::fs::write(&destination, data).map_err(|source| A2FuseError::WriteHostFile {
             path: destination,
             source,
         })
+    }
+}
+
+fn basic_get(args: BasicGetArgs) -> Result<()> {
+    let volume = Volume::open(&args.image)?;
+    let node = volume.find(&args.source, MetadataMode::Xattr)?;
+    tracing::debug!(
+        source = %args.source,
+        file_type = node.entry.file_type,
+        aux_type = node.entry.aux_type,
+        eof = node.entry.eof,
+        blocks_used = node.entry.blocks_used,
+        "reading BASIC file"
+    );
+    let data = volume.read_entry(&node.entry)?;
+    let preview_len = data.len().min(16);
+    let preview = data[..preview_len]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    tracing::debug!(
+        bytes = data.len(),
+        preview = %preview,
+        "loaded BASIC file bytes"
+    );
+    let text = detokenize_program(&data)?;
+    let destination = args.destination.unwrap_or_else(|| {
+        let leaf = args
+            .source
+            .split('/')
+            .next_back()
+            .filter(|name| !name.is_empty())
+            .unwrap_or("PROGRAM");
+        Path::new(&format!("{leaf}.txt")).to_path_buf()
+    });
+
+    if destination == Path::new("-") {
+        write_stdout(format!("{text}\n").as_bytes())
+    } else {
+        std::fs::write(&destination, format!("{text}\n")).map_err(|source| {
+            A2FuseError::WriteHostFile {
+                path: destination,
+                source,
+            }
+        })
+    }
+}
+
+fn basic_put(args: BasicPutArgs) -> Result<()> {
+    let text = String::from_utf8(read_input_bytes(&args.source)?).map_err(|error| {
+        A2FuseError::InvalidApplesoft(format!(
+            "{} is not valid UTF-8 text: {error}",
+            args.source.display()
+        ))
+    })?;
+    let tokenized = tokenize_program(&text)?;
+    let mut image = Image::open(&args.image)?;
+    remove_existing_if_forced(&mut image, &args.destination, args.force)?;
+    let mut options = PutOptions::new(args.destination);
+    options.file_type = 0xfc;
+    options.aux_type = args.aux_type;
+    options.access = AccessFlags(0xe3);
+    image.put_file(&tokenized, &options)?;
+    image.save(&args.image)
+}
+
+fn remove_existing_if_forced(image: &mut Image, destination: &str, force: bool) -> Result<()> {
+    if !force {
+        return Ok(());
+    }
+    match image.remove_file(&RemoveOptions::new(destination)) {
+        Ok(()) => Ok(()),
+        Err(A2FuseError::PathNotFound(_)) => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn read_input_bytes(source: &Path) -> Result<Vec<u8>> {
+    if source == Path::new("-") {
+        let mut bytes = Vec::new();
+        std::io::stdin()
+            .lock()
+            .read_to_end(&mut bytes)
+            .map_err(|source_error| A2FuseError::ReadHostFile {
+                path: source.to_path_buf(),
+                source: source_error,
+            })?;
+        Ok(bytes)
+    } else {
+        std::fs::read(source).map_err(|source_error| A2FuseError::ReadHostFile {
+            path: source.to_path_buf(),
+            source: source_error,
+        })
+    }
+}
+
+fn write_stdout(data: &[u8]) -> Result<()> {
+    match std::io::stdout().lock().write_all(data) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
+        Err(error) => Err(A2FuseError::Output(error)),
     }
 }

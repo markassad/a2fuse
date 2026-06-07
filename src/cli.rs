@@ -48,12 +48,21 @@ pub enum Command {
     /// Copy a file from the image to the host.
     Get(GetArgs),
 
+    /// Extract and untokenize an AppleSoft BASIC file from the image.
+    BasicGet(BasicGetArgs),
+
     /// Create a directory inside an image.
     Mkdir(MkdirArgs),
+
+    /// Remove a regular file from an image.
+    Rm(RmArgs),
 
     /// Copy a host file into the image.
     #[command(visible_alias = "add")]
     Put(PutArgs),
+
+    /// Tokenize and import an AppleSoft BASIC file into the image.
+    BasicPut(BasicPutArgs),
 }
 
 #[derive(Debug, Args)]
@@ -87,7 +96,7 @@ pub struct CreateArgs {
     #[arg(long)]
     pub force: bool,
 
-    /// Install boot blocks and a `PRODOS` system file from a cached upstream image.
+    /// Install boot blocks plus `PRODOS` and `BASIC.SYSTEM` from a cached upstream image.
     #[arg(long)]
     pub bootable: bool,
 
@@ -139,6 +148,17 @@ pub struct GetArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct BasicGetArgs {
+    pub image: PathBuf,
+
+    /// Source path inside the image.
+    pub source: String,
+
+    /// Host destination; defaults to `<SOURCE>.txt`. Use `-` for stdout.
+    pub destination: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
 pub struct MkdirArgs {
     pub image: PathBuf,
 
@@ -151,8 +171,17 @@ pub struct MkdirArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct RmArgs {
+    pub image: PathBuf,
+
+    /// File path inside the image.
+    pub path: String,
+}
+
+#[derive(Debug, Args)]
 pub struct PutArgs {
     pub image: PathBuf,
+    /// Host source file. Use `-` to read bytes from stdin.
     pub source: PathBuf,
 
     /// Destination path in the image; defaults to the host filename in the root.
@@ -165,6 +194,28 @@ pub struct PutArgs {
     /// ProDOS auxiliary type, in decimal, `0xNNNN`, or `$NNNN` form.
     #[arg(long, default_value = "0", value_parser = parse_u16)]
     pub aux_type: u16,
+
+    /// Replace an existing file at the destination path.
+    #[arg(long)]
+    pub force: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct BasicPutArgs {
+    pub image: PathBuf,
+    /// Host BASIC text file. Use `-` to read text from stdin.
+    pub source: PathBuf,
+
+    /// Destination path in the image.
+    pub destination: String,
+
+    /// ProDOS auxiliary type, in decimal, `0xNNNN`, or `$NNNN` form.
+    #[arg(long, default_value = "0x0801", value_parser = parse_u16)]
+    pub aux_type: u16,
+
+    /// Replace an existing file at the destination path.
+    #[arg(long)]
+    pub force: bool,
 }
 
 fn parse_u8(value: &str) -> std::result::Result<u8, String> {

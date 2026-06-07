@@ -91,6 +91,9 @@ pub enum A2FuseError {
     #[error("download failed from {url}: {reason}")]
     Download { url: String, reason: String },
 
+    #[error("invalid AppleSoft BASIC program: {0}")]
+    InvalidApplesoft(String),
+
     #[error("could not write command output: {0}")]
     Output(#[source] std::io::Error),
 

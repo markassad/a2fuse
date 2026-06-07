@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::error::{A2FuseError, Result};
 
 use super::block::{BLOCK_SIZE, BlockDevice};
-use super::directory::{PRODOS_ENTRIES_PER_BLOCK, PRODOS_ENTRY_LENGTH};
+use super::directory::{DirectoryEntry, PRODOS_ENTRIES_PER_BLOCK, PRODOS_ENTRY_LENGTH};
 use super::system_image::{BootFile, PRODOS_BOOT_BLOCK_BYTES};
 use super::types::{AccessFlags, StorageType};
 use super::volume::{VOLUME_DIRECTORY_KEY_BLOCK, Volume};
@@ -62,6 +62,17 @@ impl MkdirOptions {
             parents: false,
             access: AccessFlags(0xe3),
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RemoveOptions {
+    pub path: String,
+}
+
+impl RemoveOptions {
+    pub fn new(path: impl Into<String>) -> Self {
+        Self { path: path.into() }
     }
 }
 
@@ -177,6 +188,15 @@ impl Image {
     pub fn create_directory(&mut self, options: &MkdirOptions) -> Result<()> {
         let original = self.bytes.clone();
         let result = self.create_directory_inner(options);
+        if result.is_err() {
+            self.bytes = original;
+        }
+        result
+    }
+
+    pub fn remove_file(&mut self, options: &RemoveOptions) -> Result<()> {
+        let original = self.bytes.clone();
+        let result = self.remove_file_inner(options);
         if result.is_err() {
             self.bytes = original;
         }
@@ -344,6 +364,30 @@ impl Image {
         self.validate()
     }
 
+    fn remove_file_inner(&mut self, options: &RemoveOptions) -> Result<()> {
+        let components = path_components(&options.path)?;
+        let (parent_components, file_components) = components.split_at(components.len() - 1);
+        let file_name = file_components[0];
+        let volume = self.volume()?;
+        let parent_key_block = directory_key_block(&volume, parent_components)?;
+        let node = directory_nodes(&volume, parent_components)?
+            .iter()
+            .find(|node| node.entry.name.eq_ignore_ascii_case(file_name))
+            .ok_or_else(|| A2FuseError::PathNotFound(options.path.clone()))?;
+        if node.is_directory() {
+            return Err(A2FuseError::NotAFile(options.path.clone()));
+        }
+
+        let slot = self.find_directory_entry_slot(parent_key_block, file_name)?;
+        let allocated_blocks = self.allocated_blocks_for_entry(&node.entry)?;
+        for block in allocated_blocks {
+            self.set_block_free(block, true);
+        }
+        self.bytes[slot.offset..slot.offset + PRODOS_ENTRY_LENGTH].fill(0);
+        self.decrement_directory_file_count(parent_key_block)?;
+        self.validate()
+    }
+
     fn create_child_directory(
         &mut self,
         parent_key_block: u16,
@@ -406,6 +450,33 @@ impl Image {
         Err(A2FuseError::DirectoryFull)
     }
 
+    fn find_directory_entry_slot(&self, key_block: u16, name: &str) -> Result<DirectorySlot> {
+        let mut block = key_block;
+        let mut first = true;
+        while block != 0 {
+            let offset = block_offset(block);
+            for slot in 0..PRODOS_ENTRIES_PER_BLOCK {
+                if first && slot == 0 {
+                    continue;
+                }
+                let entry_offset = offset + 4 + slot * PRODOS_ENTRY_LENGTH;
+                if let Some(entry) = DirectoryEntry::parse(
+                    &self.bytes[entry_offset..entry_offset + PRODOS_ENTRY_LENGTH],
+                )? && entry.name.eq_ignore_ascii_case(name)
+                {
+                    return Ok(DirectorySlot {
+                        block,
+                        entry_number: (slot + 1) as u8,
+                        offset: entry_offset,
+                    });
+                }
+            }
+            block = read_u16(&self.bytes, offset + 2);
+            first = false;
+        }
+        Err(A2FuseError::PathNotFound(name.to_owned()))
+    }
+
     fn increment_directory_file_count(&mut self, key_block: u16) -> Result<()> {
         let count_offset = block_offset(key_block) + 4 + 0x21;
         let file_count = read_u16(&self.bytes, count_offset)
@@ -413,6 +484,63 @@ impl Image {
             .ok_or_else(|| A2FuseError::InvalidDirectory("file count overflow".to_owned()))?;
         put_u16(&mut self.bytes, count_offset, file_count);
         Ok(())
+    }
+
+    fn decrement_directory_file_count(&mut self, key_block: u16) -> Result<()> {
+        let count_offset = block_offset(key_block) + 4 + 0x21;
+        let file_count = read_u16(&self.bytes, count_offset)
+            .checked_sub(1)
+            .ok_or_else(|| A2FuseError::InvalidDirectory("file count underflow".to_owned()))?;
+        put_u16(&mut self.bytes, count_offset, file_count);
+        Ok(())
+    }
+
+    fn allocated_blocks_for_entry(&self, entry: &DirectoryEntry) -> Result<Vec<u16>> {
+        let mut blocks = Vec::new();
+        match entry.storage_type {
+            StorageType::Seedling => {
+                if entry.key_pointer != 0 {
+                    blocks.push(entry.key_pointer);
+                }
+            }
+            StorageType::Sapling => {
+                if entry.key_pointer != 0 {
+                    blocks.push(entry.key_pointer);
+                    let index = self.read_block_bytes(entry.key_pointer)?;
+                    for position in 0..256 {
+                        if let Some(pointer) = index_pointer(index, position) {
+                            blocks.push(pointer);
+                        }
+                    }
+                }
+            }
+            StorageType::Tree => {
+                if entry.key_pointer != 0 {
+                    blocks.push(entry.key_pointer);
+                    let master = self.read_block_bytes(entry.key_pointer)?;
+                    for sapling_position in 0..256 {
+                        if let Some(sapling_pointer) = index_pointer(master, sapling_position) {
+                            blocks.push(sapling_pointer);
+                            let sapling = self.read_block_bytes(sapling_pointer)?;
+                            for data_position in 0..256 {
+                                if let Some(data_pointer) = index_pointer(sapling, data_position) {
+                                    blocks.push(data_pointer);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            storage_type => {
+                return Err(A2FuseError::UnsupportedStorageType {
+                    storage_type: storage_type as u8,
+                    name: entry.name.clone(),
+                });
+            }
+        }
+        blocks.sort_unstable();
+        blocks.dedup();
+        Ok(blocks)
     }
 
     fn allocate_blocks(&mut self, count: usize) -> Result<Vec<u16>> {
@@ -514,6 +642,21 @@ impl Image {
         let offset = block_offset(bitmap_key_block) + bitmap_byte;
         let mask = 0x80 >> (block % 8);
         (offset, mask)
+    }
+
+    fn read_block_bytes(&self, block: u16) -> Result<&[u8; BLOCK_SIZE]> {
+        let start = block_offset(block);
+        let end = start + BLOCK_SIZE;
+        let bytes = self
+            .bytes
+            .get(start..end)
+            .ok_or(A2FuseError::BlockOutOfRange {
+                block,
+                block_count: self.bytes.len() / BLOCK_SIZE,
+            })?;
+        bytes
+            .try_into()
+            .map_err(|_| A2FuseError::InvalidVolume("invalid block size".to_owned()))
     }
 
     fn write_to(&self, path: &Path, create_new: bool) -> Result<()> {
@@ -711,4 +854,9 @@ fn temporary_path(path: &Path) -> PathBuf {
         .map_or_else(|| "a2fuse".into(), |name| name.to_os_string());
     name.push(format!(".tmp-{}", std::process::id()));
     path.with_file_name(name)
+}
+
+fn index_pointer(index_block: &[u8; BLOCK_SIZE], position: usize) -> Option<u16> {
+    let pointer = u16::from(index_block[position]) | (u16::from(index_block[position + 256]) << 8);
+    (pointer != 0).then_some(pointer)
 }

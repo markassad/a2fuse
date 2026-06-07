@@ -152,6 +152,9 @@ supports:
 - creating root and nested subdirectories;
 - adding a regular seedling, sapling, or tree file to the root or an existing
   subdirectory;
+- deleting regular seedling, sapling, or tree files;
+- tokenizing host AppleSoft BASIC text into ProDOS BAS files and untokenizing
+  BAS files back to host text through CLI commands;
 - updating the allocation bitmap and affected directory file counts;
 - preserving explicit file type, auxiliary type, and access flags.
 
@@ -166,8 +169,8 @@ count; the volume header count therefore continues to describe root entries
 only.
 
 The writer does not yet grow a full directory chain. It also does not support
-replacement, deletion, rename, resource-fork writing, timestamp writing, or
-repair.
+replacement, directory deletion, rename, resource-fork writing, timestamp
+writing, or repair.
 
 [techref-b]: https://prodos8.com/docs/techref/file-organization/
 [ciderpress-prodos]: https://ciderpress2.com/formatdoc/ProDOS-notes.html

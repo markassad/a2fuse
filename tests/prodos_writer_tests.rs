@@ -1,7 +1,7 @@
 use a2fuse::A2FuseError;
 use a2fuse::prodos::{
     AccessFlags, BootFile, CreateOptions, Image, MetadataMode, MkdirOptions, PutOptions,
-    StorageType,
+    RemoveOptions, StorageType,
 };
 
 #[test]
@@ -436,6 +436,58 @@ fn install_bootable_components_rolls_back_when_prodos_exists() {
             )
             .unwrap_err(),
         A2FuseError::FileExists(_)
+    ));
+    assert_eq!(image.bytes(), original);
+}
+
+#[test]
+fn removes_regular_files_and_reuses_freed_blocks() {
+    let mut image = Image::create(&CreateOptions {
+        name: "FILES".to_owned(),
+        blocks: 16,
+    })
+    .unwrap();
+    image.put_file(b"abc", &PutOptions::new("A")).unwrap();
+    let before_remove = image.bytes().to_vec();
+
+    image.remove_file(&RemoveOptions::new("A")).unwrap();
+    assert!(matches!(
+        image.volume().unwrap().find("A", MetadataMode::Xattr),
+        Err(A2FuseError::PathNotFound(_))
+    ));
+
+    image.put_file(b"def", &PutOptions::new("B")).unwrap();
+    assert_eq!(
+        image
+            .volume()
+            .unwrap()
+            .read_entry(
+                &image
+                    .volume()
+                    .unwrap()
+                    .find("B", MetadataMode::Xattr)
+                    .unwrap()
+                    .entry
+            )
+            .unwrap(),
+        b"def"
+    );
+    assert_ne!(image.bytes(), before_remove);
+}
+
+#[test]
+fn remove_rejects_directories_and_rolls_back() {
+    let mut image = Image::create(&CreateOptions {
+        name: "DIRS".to_owned(),
+        blocks: 280,
+    })
+    .unwrap();
+    image.create_directory(&MkdirOptions::new("Games")).unwrap();
+    let original = image.bytes().to_vec();
+
+    assert!(matches!(
+        image.remove_file(&RemoveOptions::new("Games")).unwrap_err(),
+        A2FuseError::NotAFile(_)
     ));
     assert_eq!(image.bytes(), original);
 }

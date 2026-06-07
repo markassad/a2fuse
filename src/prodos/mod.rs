@@ -1,3 +1,4 @@
+pub mod applesoft;
 pub mod block;
 pub mod directory;
 pub mod file;
@@ -7,6 +8,7 @@ pub mod types;
 pub mod volume;
 pub mod writer;
 
+pub use applesoft::{detokenize_program, tokenize_program};
 pub use block::{BLOCK_SIZE, BlockDevice};
 pub use directory::{Directory, DirectoryEntry};
 pub use file::FileFork;
@@ -17,4 +19,4 @@ pub use system_image::{
 };
 pub use types::{AccessFlags, ProdosTimestamp, StorageType};
 pub use volume::{Node, Volume, VolumeHeader};
-pub use writer::{CreateOptions, Image, MkdirOptions, PutOptions};
+pub use writer::{CreateOptions, Image, MkdirOptions, PutOptions, RemoveOptions};
